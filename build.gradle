@@ -1,18 +1,19 @@
+import com.proquest.gradle.Util
+
 buildscript {
     repositories {
         mavenCentral()
         jcenter()
     }
-    dependencies {
-        // classpath 'net.saliman:gradle-cobertura-plugin:2.2.4'
-        classpath 'info.solidsoft.gradle.pitest:gradle-pitest-plugin:1.1.1'
-        classpath 'org.kt3k.gradle.plugin:coveralls-gradle-plugin:2.1.0'
-    }
+}
+
+plugins {
+    id 'com.proquest.codegen.CodeGenPlugin' version '1.11.21'
+    id("com.proquest.gradle.NexusPublishPlugin") version "1.11.21"
+    id("com.proquest.gradle.IvyPublishPlugin") version "1.11.21"
 }
 
 allprojects {
-    apply plugin: 'com.github.kt3k.coveralls'
-    apply plugin: 'jacoco' // 'cobertura'
 
     repositories {
         mavenCentral()
@@ -21,7 +22,6 @@ allprojects {
 
 subprojects {
     apply plugin: 'java'
-    apply plugin: 'info.solidsoft.pitest'
 
     sourceCompatibility = '1.7'
     targetCompatibility = '1.7'
@@ -83,13 +83,6 @@ subprojects {
         }
     }
 
-    pitest {
-        targetClasses = ['Capsule', 'capsule.*', 'co.paralleluniverse.*']
-        targetTests = ['CapsuleTest', 'capsule.*', 'co.paralleluniverse.*']
-
-         jvmArgs = ['-Djava.protocol.handler.pkgs=co.paralleluniverse.filesystem']
-    }
-
     task run(type: JavaExec, dependsOn:[testClasses]) {
         classpath = sourceSets.main.runtimeClasspath
         if(project.hasProperty('mainClass')){
@@ -104,48 +97,33 @@ subprojects {
         classpath += sourceSets.test.runtimeClasspath
     }
 
-    jacocoTestReport {
-        reports {
-            xml.enabled = true // coveralls plugin depends on xml format report
-            html.enabled = true
-            csv.enabled = false
-//          xml.destination = "${buildDir}/reports/jacoco/test/jacocoTestReport_${project.name}.xml"
-        }
-    }
-    
-//  check.dependsOn jacocoTestReport
-    
     javadoc {
         options.links = [ "http://docs.oracle.com/javase/7/docs/api/" ]
     }
 
     task sourcesJar(type: Jar, dependsOn: classes) {
-        classifier = 'sources'
         from sourceSets.main.allSource
     }
 
     task javadocJar(type: Jar, dependsOn: javadoc) {
-        classifier = 'javadoc'
         from javadoc.destinationDir
     }
 
-    //    tasks.withType(JavaCompile) {
-    //        options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
-    //    }
-
-    task javancss(dependsOn: 'classes') << {
-        ant {
-            logging.level = LogLevel.INFO
-            taskdef(name:'javancss', classname:'javancss.JavancssAntTask', classpath: configurations.javancss.asPath)
-            javancss(
-                srcdir:'src/main/java',
-                abortOnFail:'true',
-                generateReport:'true',
-                packageMetrics:'true',
-                classMetrics:'false',
-                functionMetrics:'false'
-                // outputFile: reportName,
-            )
+    task javancss(dependsOn: 'classes') {
+        doLast {
+            ant {
+                logging.level = LogLevel.INFO
+                taskdef(name: 'javancss', classname: 'javancss.JavancssAntTask', classpath: configurations.javancss.asPath)
+                javancss(
+                        srcdir: 'src/main/java',
+                        abortOnFail: 'true',
+                        generateReport: 'true',
+                        packageMetrics: 'true',
+                        classMetrics: 'false',
+                        functionMetrics: 'false'
+                        // outputFile: reportName,
+                )
+            }
         }
     }
 
@@ -164,46 +142,6 @@ subprojects {
     signing {
         required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
         sign configurations.archives
-    }
-
-    uploadArchives {
-        repositories {
-            mavenDeployer {
-                beforeDeployment { deployment -> signing.signPom(deployment) }
-
-                repository(
-                    url: (isReleaseVersion ?
-                              "https://oss.sonatype.org/service/local/staging/deploy/maven2" :
-                              "https://oss.sonatype.org/content/repositories/snapshots")) {
-                    authentication(userName: sonatypeUsername, password: sonatypePassword)
-                }
-
-                pom.project {
-                    name project.name
-                    packaging 'jar'
-                    description project.description
-                    url project.url
-                    scm {
-                        url project.scmUrl
-                        connection project.scmConnection
-                        developerConnection project.scmConnection
-                    }
-                    licenses {
-                        license {
-                            name project.licenseName
-                            url project.licenseUrl
-                            distribution 'repo'
-                        }
-                    }
-                    developers {
-                        developer {
-                            id 'pron'
-                            name 'Ron Pressler'
-                        }
-                    }
-                }
-            }
-        }
     }
 
     defaultTasks 'build'
@@ -238,22 +176,4 @@ project (':capsule-util') {
                     "co/paralleluniverse/filesystem/**"
         ]
     }
-}
-
-task jacocoRootReport(type: org.gradle.testing.jacoco.tasks.JacocoReport) {
-    dependsOn = subprojects.test
-    sourceDirectories = files(subprojects.sourceSets.main.allSource.srcDirs)
-    classDirectories =  files(subprojects.sourceSets.main.output)
-    executionData = files(subprojects.jacocoTestReport.executionData)
-    reports {
-        html.enabled = true
-        xml.enabled = true
-        csv.enabled = false
-        xml.destination = "${buildDir}/reports/jacoco/test/jacocoTestReport.xml"
-    }
-}
-
-coveralls {
-    sourceDirs = files(subprojects.sourceSets.main.allSource.srcDirs).files.absolutePath
-    jacocoReportPath = "${buildDir}/reports/jacoco/test/jacocoTestReport.xml"
 }
